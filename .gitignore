@@ -24,13 +24,13 @@ hs_err_pid*
 replay_pid*
 
 .idea/
+.claude/
 target/
-
-# generated project used to test the archetype
-voltdb-stored-procedures-maven-quickstart/scripts/test-generated-project/
 
 /.DS_Store
 .DS_Store
 
-# Local config (contains real project values — do not commit)
-src/main/resources/application.properties
+# Local config and runbooks (contain real project values — do not commit)
+**/src/main/resources/application.properties
+**/*.local.md
+**/runbook.env
