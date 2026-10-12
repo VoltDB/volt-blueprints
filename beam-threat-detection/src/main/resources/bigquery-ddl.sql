@@ -1,0 +1,55 @@
+-- BigQuery destination schemas for the beam-threat-detection reporting
+-- pipeline (Path 3) and the native Pub/Sub-to-BigQuery subscription for raw
+-- page hits.
+--
+-- Both tables below are BigQuery-managed Iceberg tables
+-- (table_format='ICEBERG', storage_uri in GCS). BigQuery stores each row as
+-- Apache Iceberg Parquet files in GCS behind a single BigQuery-managed
+-- table — queryable from BigQuery SQL and from external Iceberg readers
+-- pointed at the GCS path.
+--
+-- RUNBOOK §7 is the canonical source of truth; the DDL here is a reference
+-- snapshot. Run the parameterized commands in RUNBOOK §7 (not this file) to
+-- create the real tables — they wire in the BigQuery CLOUD_RESOURCE
+-- connection and the per-environment project/bucket values.
+
+-- ============================================
+-- transactions — reporting output. Populated by ReportingPipeline via
+-- BigQueryIO.write (one write path; no separate Iceberg mirror). Column list
+-- matches ReportingPipeline.ENRICHED_SCHEMA (TXN_SCHEMA + 5 GeoIP fields
+-- produced by GeoIpEnrichFn.addGeoIpFields).
+-- Storage: gs://<bucket>/beam_threat_detection/transactions/
+-- ============================================
+-- CREATE TABLE `<project>.<dataset>.transactions` (
+--   txn_id             INT64     NOT NULL,
+--   account_id         INT64     NOT NULL,
+--   txn_time           TIMESTAMP NOT NULL,
+--   merchant_id        INT64,
+--   amount             NUMERIC,
+--   device_id          STRING,
+--   source_ip          STRING,
+--   accepted           INT64,
+--   reason             STRING,
+--   rule_name          STRING,
+--   account_name       STRING,
+--   merchant_name      STRING,
+--   merchant_category  STRING,
+--   country_code       STRING,
+--   country_name       STRING,
+--   city_name          STRING,
+--   latitude           FLOAT64,
+--   longitude          FLOAT64
+-- )
+-- PARTITION BY DATE(txn_time)
+-- CLUSTER BY source_ip
+-- WITH CONNECTION `<project>.<region>.<connection>`
+-- OPTIONS (file_format='PARQUET', table_format='ICEBERG',
+--          storage_uri='gs://<bucket>/beam_threat_detection/transactions');
+
+-- ============================================
+-- page_hits_raw — raw page-hit events. Populated by the native
+-- Pub/Sub-to-BigQuery subscription (no Beam involvement; see RUNBOOK §7).
+-- Storage: gs://<bucket>/beam_threat_detection/page_hits_raw/
+-- Full DDL (with inline operational notes) lives in RUNBOOK §7a.
+-- See: https://cloud.google.com/bigquery/docs/iceberg-tables
+-- ============================================
