@@ -21,9 +21,8 @@
 
     <properties>
         <beam.version>2.74.0</beam.version>
-        <voltdb.beam.version>1.0.0</voltdb.beam.version>
-        <!-- TODO: bump to 16.0.0 once it publishes to Maven Central. -->
-        <voltdb.version>15.3.0</voltdb.version>
+        <voltdb.beam.version>1.1.0</voltdb.beam.version>
+        <voltdb.version>16.0.0</voltdb.version>
         <slf4j.version>2.0.9</slf4j.version>
         <google.cloud.libraries.version>26.44.0</google.cloud.libraries.version>
         <maxmind.geoip2.version>4.2.1</maxmind.geoip2.version>

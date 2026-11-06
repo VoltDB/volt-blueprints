@@ -10,7 +10,7 @@ A real-time threat/fraud pipeline on GCP where:
 
 - A Java microservice (`ThreatDetectionApp`) calls VoltDB stored procedures per transaction for atomic rule evaluation.
 - A **Beam streaming pipeline on Dataflow** (`PageHitsIngestPipeline`) uses `VoltDbIO.write` to ingest high-volume page-hit events from PubSub into VoltDB's `SUBNET_REQUESTS` counter.
-- A **Beam batch pipeline on Dataflow** (`ReportingPipeline`) uses `VoltDbIO.read` to pull new transactions out of VoltDB, enriches them with MaxMind GeoIP, and writes to BigQuery + an Apache Iceberg mirror on GCS for warehouse analytics.
+- A **Beam batch pipeline on Dataflow** (`ReportingPipeline`) uses `VoltDbIO.read` to pull new transactions out of VoltDB, enriches them with MaxMind GeoIP, and writes them into a BigQuery-Iceberg table via `BigQueryIO.write` — one write lands rows in BigQuery and as Iceberg Parquet in GCS for warehouse analytics.
 
 Because page hits and transactions both write to the same per-subnet counter inside VoltDB, the transaction-processing SP sees the composite signal with per-request latency. A bot scan at 100 req/s pushes the subnet's hit counter past threshold within seconds, and the attacker's next transaction attempt from that subnet is rejected atomically — not minutes later from a dashboard.
 
@@ -42,16 +42,15 @@ PubSub topic (threat-page-hits)
              fire-and-forget: return value ignored
              async pipelined: high-volume page hits saturate the write path
 
-── Path 3 — Reporting + warehouse (Beam + connector + BQ + Iceberg) ─
+── Path 3 — Reporting + warehouse (Beam + connector + BQ-Iceberg) ──
 ./bin/run-reporting-pipeline.sh  (or Cloud Scheduler on a cadence)
     → ReportingPipeline (Beam batch, Dataflow)
        1. Watermark: SELECT MAX(TXN_TIME) FROM BigQuery.transactions
        2. VoltDbIO.read().withProcedure("ReadTxnsSince", watermark)
              SP output includes a server-side JOIN with ACCOUNTS + MERCHANTS
        3. GeoIP enrichment via MaxMind side input (GeoIpEnrichFn)
-       4. Parallel sinks:
-             ├─ BigQueryIO.write    → BigQuery.transactions (native)
-             └─ Managed.ICEBERG     → gs://.../transactions/ (Iceberg mirror)
+       4. BigQueryIO.write → BigQuery.transactions
+             (BigQuery-Iceberg table — rows stored as Iceberg Parquet in GCS)
 ```
 
 See `src/main/java/org/voltdb/example/threat/pipelines/` for the two Beam pipelines and `src/main/java/com/voltactivedata/example/threat/procedures/` for the VoltDB SPs.
@@ -78,7 +77,7 @@ beam-threat-detection/
 │       └── generator/                          PageHitsGenerator, TransactionsGenerator, NarrativeScene
 ├── src/main/resources/
 │   ├── voltdb-ddl.sql                          schema + materialised views for rate counters
-│   ├── bigquery-ddl.sql                        warehouse tables (BQ native + BQ-Iceberg)
+│   ├── bigquery-ddl.sql                        warehouse tables (BQ-Iceberg)
 │   ├── data/                                   seed account + merchant CSVs + the URL catalog
 │   └── application.properties.template         config placeholders
 ├── src/test/java/                              Testcontainer-backed integration tests (mvn verify)
@@ -94,7 +93,7 @@ beam-threat-detection/
 - Maven 3.6+
 - Docker (for the Testcontainer-backed integration tests)
 - A VoltDB licence file. The pom pins `voltdb.image.version` in `src/test/resources/test.properties`.
-- For GCP end-to-end runs only: a Google Cloud project with PubSub, Dataflow, BigQuery, GCS, and a BigQuery `CLOUD_RESOURCE` connection pointing at a GCS bucket (used by the Iceberg-formatted raw page-hit table). `gcloud auth application-default login` once per workstation.
+- For GCP end-to-end runs only: a Google Cloud project with PubSub, Dataflow, BigQuery, GCS, and a BigQuery `CLOUD_RESOURCE` connection pointing at a GCS bucket (used by the BigQuery-Iceberg warehouse tables). `gcloud auth application-default login` once per workstation.
 
 ## Running the tests locally
 
@@ -117,7 +116,7 @@ With the infrastructure in place, the full flow is three commands:
 # 2. Fire the end-to-end narrative scenario (~2 min, publishes to PubSub + fires txns)
 ./bin/run-narrative-scene.sh
 
-# 3. Report new VoltDB txns into BigQuery + Iceberg (~5 min, batch Dataflow)
+# 3. Report new VoltDB txns into the BigQuery-Iceberg warehouse (~5 min, batch Dataflow)
 ./bin/run-reporting-pipeline.sh
 ```
 
